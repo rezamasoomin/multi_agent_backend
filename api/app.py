@@ -14,36 +14,6 @@ app = FastAPI(
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token") # Example token URL
 
-async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
-    """
-    Placeholder for your user authentication logic.
-    Retrieves the current user based on the provided token.
-    """
-    # In a real app, you'd validate the token and fetch user details.
-    if token == "fake-customer-token": # Example token
-        return {"username": "customer1", "user_id": "user_123", "roles": ["customer"]}
-    elif token == "fake-admin-token": # Example token
-        return {"username": "admin_user", "user_id": "admin_001", "roles": ["admin", "customer"]}
-    
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-
-async def verify_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
-    """
-    Verifies if the current user has admin privileges.
-    """
-    if "admin" not in current_user.get("roles", []):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User does not have admin privileges"
-        )
-    return current_user
-
-# --- Core App Routes (Optional) ---
-# These are routes directly on the main 'app' instance.
 
 @app.get("/", tags=["General"])
 async def root():
@@ -59,5 +29,31 @@ async def health_check():
     """
     return {"status": "healthy"}
 
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+    """
+    Retrieves the current user based on the provided token.
+    """
+    from tools.auth_tools import verify_jwt_token
+    
+    result = verify_jwt_token(token)
+    if not result["success"]:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=result["error"],
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    return result["user"]
+
+async def verify_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Verifies if the current user has admin privileges.
+    """
+    if current_user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have admin privileges"
+        )
+    return current_user
 # IMPORTANT: Do NOT call app.include_router for admin_router or customer_router here.
 # That will be handled in main.py after routes are defined on those routers.

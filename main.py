@@ -18,6 +18,7 @@ from agents.user_agent import create_user_agent
 from agents.product_agent import create_product_agent
 from agents.cart_agent import create_cart_agent
 from agents.order_agent import create_order_agent
+from agents.auth_agent import create_auth_agent
 from agents.main_agent import create_main_agent
 
 # 1. Import the main 'app' instance and shared dependencies (like auth)
@@ -28,6 +29,8 @@ from api.admin_routes import admin_router, ProductRequest, ProductUpdateRequest,
 # Removed: MessageRequest as AdminMessageRequest (unless used)
 from api.customer_routes import customer_router, CartItemRequest
 # Removed: MessageRequest as CustomerMessageRequest (unless used)
+from api.auth_routes import auth_router, set_auth_dependencies
+
 
 
 # Initialize Google Gemini
@@ -37,12 +40,21 @@ model = 'gemini-2.0-flash'
 # Initialize database session service
 session_service = DatabaseSessionService(db_url=DATABASE_URL)
 
+from tools.db_tools import create_database_schema, insert_sample_data
+print("Creating database schema...")
+schema_result = create_database_schema()
+print(f"Schema creation result: {schema_result}")
+
+print("Inserting sample data...")
+sample_data_result = insert_sample_data()
+print(f"Sample data insertion result: {sample_data_result}")
 # Initialize agents
 schema_agent = create_schema_agent(model)
 user_agent = create_user_agent(model)
 product_agent = create_product_agent(model)
 cart_agent = create_cart_agent(model)
 order_agent = create_order_agent(model)
+auth_agent = create_auth_agent(model)
 main_agent = create_main_agent(model)
 
 # Initialize runners
@@ -51,7 +63,9 @@ user_runner = Runner(agent=user_agent, app_name='user', session_service=session_
 product_runner = Runner(agent=product_agent, app_name='product', session_service=session_service)
 cart_runner = Runner(agent=cart_agent, app_name='cart', session_service=session_service)
 order_runner = Runner(agent=order_agent, app_name='order', session_service=session_service)
+auth_runner = Runner(agent=auth_agent, app_name='auth', session_service=session_service)
 main_runner = Runner(agent=main_agent, app_name='main', session_service=session_service)
+set_auth_dependencies(auth_runner, session_service)
 
 
 # Helper to process runner generator
@@ -193,6 +207,7 @@ async def view_cart(
 # This must happen AFTER all routes are defined on admin_router and customer_router.
 app.include_router(admin_router, prefix="/api/admin") # Tags are now defined on routes themselves
 app.include_router(customer_router, prefix="/api/customer") # Tags are now defined on routes themselves
+app.include_router(auth_router, prefix="/api/auth") # Tags are now defined on routes themselves
 
 # Run the application
 if __name__ == "__main__":
