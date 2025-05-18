@@ -1,0 +1,8 @@
+google-adk
+google-generativeai
+fastapi
+uvicorn
+pydantic
+python-dotenv
+sqlalchemy
+pyjwt
