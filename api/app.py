@@ -1,66 +1,63 @@
-# api/app.py
-from fastapi import FastAPI, Request, Depends, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import jwt
-from datetime import datetime
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer # Example if you use token auth
 from typing import Dict, Any
 
-# Import local modules
-from config.settings import JWT_SECRET
-
-# Initialize the FastAPI app
 app = FastAPI(
-    title="E-commerce ADK API",
-    description="API for an e-commerce application built with Google's Agent Development Kit",
+    title="Multi-Agent E-commerce API",
+    description="API for managing an e-commerce platform with multiple agents.",
     version="1.0.0"
 )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # For production, specify exact origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# --- Authentication Utilities (Example Stubs) ---
+# Replace these with your actual authentication logic.
+# If complex, these might live in a separate auth.py and be imported here.
 
-# Function to get the current authenticated user
-async def get_current_user(request: Request) -> Dict[str, Any]:
-    auth_header = request.headers.get("Authorization")
-    if not auth_header or not auth_header.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Missing or invalid token")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/token") # Example token URL
+
+async def get_current_user(token: str = Depends(oauth2_scheme)) -> Dict[str, Any]:
+    """
+    Placeholder for your user authentication logic.
+    Retrieves the current user based on the provided token.
+    """
+    # In a real app, you'd validate the token and fetch user details.
+    if token == "fake-customer-token": # Example token
+        return {"username": "customer1", "user_id": "user_123", "roles": ["customer"]}
+    elif token == "fake-admin-token": # Example token
+        return {"username": "admin_user", "user_id": "admin_001", "roles": ["admin", "customer"]}
     
-    token = auth_header.replace("Bearer ", "")
-    try:
-        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
-        
-        # Check if token is expired
-        if "exp" in payload and datetime.fromtimestamp(payload["exp"]) < datetime.now():
-            raise HTTPException(status_code=401, detail="Token expired")
-            
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid authentication credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
-# Helper function to verify admin role
-async def verify_admin(user: Dict[str, Any] = Depends(get_current_user)):
-    if user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Admin privileges required")
-    return user
+async def verify_admin(current_user: Dict[str, Any] = Depends(get_current_user)) -> Dict[str, Any]:
+    """
+    Verifies if the current user has admin privileges.
+    """
+    if "admin" not in current_user.get("roles", []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User does not have admin privileges"
+        )
+    return current_user
 
-# Root endpoint
-@app.get("/", tags=["Root"])
+# --- Core App Routes (Optional) ---
+# These are routes directly on the main 'app' instance.
+
+@app.get("/", tags=["General"])
 async def root():
-    return {
-        "message": "Welcome to the E-commerce ADK API",
-        "docs_url": "/docs",
-        "redoc_url": "/redoc"
-    }
+    """
+    Root endpoint for the API.
+    """
+    return {"message": "Welcome to the Multi-Agent E-commerce API"}
 
-# Health check endpoint
-@app.get("/api/health", tags=["Health"])
+@app.get("/api/health", tags=["General"])
 async def health_check():
-    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+    """
+    Health check endpoint.
+    """
+    return {"status": "healthy"}
+
+# IMPORTANT: Do NOT call app.include_router for admin_router or customer_router here.
+# That will be handled in main.py after routes are defined on those routers.
