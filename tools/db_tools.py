@@ -2,10 +2,10 @@
 from typing import Dict, List, Any, Optional, Tuple
 import json
 from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from config.settings import DATABASE_URL
 
-def execute_sql_query(query: str, params: Dict[str, Any] = None) -> Dict[str, Any]:
+def execute_sql_query(query: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Execute a SQL query and return results.
     
     Args:
@@ -19,6 +19,7 @@ def execute_sql_query(query: str, params: Dict[str, Any] = None) -> Dict[str, An
     try:
         with engine.connect() as connection:
             result = connection.execute(text(query), params or {})
+            connection.commit()  # Add explicit commit
             
             if query.strip().upper().startswith(("SELECT", "WITH")):
                 # For SELECT queries, return the results
@@ -50,7 +51,7 @@ def create_database_schema() -> Dict[str, Any]:
         "products": """
         CREATE TABLE IF NOT EXISTS products (
             product_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
+            name TEXT UNIQUE NOT NULL,
             description TEXT,
             price REAL NOT NULL,
             stock_quantity INTEGER NOT NULL,
@@ -107,77 +108,125 @@ def create_database_schema() -> Dict[str, Any]:
     
     return {"success": True, "message": "Database schema created successfully", "results": results}
 
+def check_if_data_exists() -> bool:
+    """Check if sample data already exists in the database."""
+    query = "SELECT COUNT(*) as count FROM users WHERE username IN ('admin', 'customer')"
+    result = execute_sql_query(query)
+    
+    if result["success"] and result["data"]:
+        return result["data"][0]["count"] > 0
+    return False
+
 def insert_sample_data() -> Dict[str, Any]:
     """Insert sample data into the database for testing."""
-    # Sample admin user
-    admin_query = """
-    INSERT INTO users (username, password, email, role)
-    VALUES (:username, :password, :email, :role)
-    """
-    admin_params = {
-        "username": "admin",
-        "password": "admin123",  # In production, use hashed passwords
-        "email": "admin@example.com",
-        "role": "admin"
-    }
     
-    # Sample customer user
-    customer_query = """
-    INSERT INTO users (username, password, email, role)
-    VALUES (:username, :password, :email, :role)
-    """
-    customer_params = {
-        "username": "customer",
-        "password": "customer123",  # In production, use hashed passwords
-        "email": "customer@example.com",
-        "role": "customer"
-    }
-    
-    # Sample products
-    products_query = """
-    INSERT INTO products (name, description, price, stock_quantity, category, image_url)
-    VALUES (:name, :description, :price, :stock_quantity, :category, :image_url)
-    """
-    products_params = [
-        {
-            "name": "Smartphone X",
-            "description": "Latest smartphone with amazing features",
-            "price": 499.99,
-            "stock_quantity": 50,
-            "category": "Electronics",
-            "image_url": "https://example.com/smartphone.jpg"
-        },
-        {
-            "name": "Laptop Pro",
-            "description": "Powerful laptop for professionals",
-            "price": 1299.99,
-            "stock_quantity": 20,
-            "category": "Electronics",
-            "image_url": "https://example.com/laptop.jpg"
-        },
-        {
-            "name": "Casual T-Shirt",
-            "description": "Comfortable cotton t-shirt",
-            "price": 19.99,
-            "stock_quantity": 100,
-            "category": "Clothing",
-            "image_url": "https://example.com/tshirt.jpg"
+    # Check if data already exists
+    if check_if_data_exists():
+        return {
+            "success": True, 
+            "message": "Sample data already exists, skipping insertion",
+            "results": {"skipped": True}
         }
-    ]
     
-    # Execute queries
     results = {}
     
-    admin_result = execute_sql_query(admin_query, admin_params)
-    results["admin_user"] = admin_result
-    
-    customer_result = execute_sql_query(customer_query, customer_params)
-    results["customer_user"] = customer_result
-    
-    products_results = []
-    for params in products_params:
-        product_result = execute_sql_query(products_query, params)
-        products_results.append(product_result)
-    results["products"] = products_results
-    
-    return {"success": True, "message": "Sample data inserted successfully", "results": results}
+    try:
+        # Sample admin user - using INSERT OR IGNORE
+        admin_query = """
+        INSERT OR IGNORE INTO users (username, password, email, role)
+        VALUES (:username, :password, :email, :role)
+        """
+        admin_params = {
+            "username": "admin",
+            "password": "admin123",  # In production, use hashed passwords
+            "email": "admin@example.com",
+            "role": "admin"
+        }
+        
+        admin_result = execute_sql_query(admin_query, admin_params)
+        results["admin_user"] = admin_result
+        print(f"Admin user result: {admin_result}")
+        
+        # Sample customer user - using INSERT OR IGNORE
+        customer_query = """
+        INSERT OR IGNORE INTO users (username, password, email, role)
+        VALUES (:username, :password, :email, :role)
+        """
+        customer_params = {
+            "username": "customer",
+            "password": "customer123",  # In production, use hashed passwords
+            "email": "customer@example.com",
+            "role": "customer"
+        }
+        
+        customer_result = execute_sql_query(customer_query, customer_params)
+        results["customer_user"] = customer_result
+        print(f"Customer user result: {customer_result}")
+        
+        # Sample products - using INSERT OR IGNORE
+        products_query = """
+        INSERT OR IGNORE INTO products (name, description, price, stock_quantity, category, image_url)
+        VALUES (:name, :description, :price, :stock_quantity, :category, :image_url)
+        """
+        products_params = [
+            {
+                "name": "Smartphone X",
+                "description": "Latest smartphone with amazing features",
+                "price": 499.99,
+                "stock_quantity": 50,
+                "category": "Electronics",
+                "image_url": "https://example.com/smartphone.jpg"
+            },
+            {
+                "name": "Laptop Pro",
+                "description": "Powerful laptop for professionals",
+                "price": 1299.99,
+                "stock_quantity": 20,
+                "category": "Electronics",
+                "image_url": "https://example.com/laptop.jpg"
+            },
+            {
+                "name": "Casual T-Shirt",
+                "description": "Comfortable cotton t-shirt",
+                "price": 19.99,
+                "stock_quantity": 100,
+                "category": "Clothing",
+                "image_url": "https://example.com/tshirt.jpg"
+            }
+        ]
+        
+        products_results = []
+        for params in products_params:
+            product_result = execute_sql_query(products_query, params)
+            products_results.append(product_result)
+            print(f"Product insertion result: {product_result}")
+        
+        results["products"] = products_results
+        
+        # Check if any data was actually inserted
+        success_count = 0
+        if admin_result.get("success") and admin_result.get("rowcount", 0) > 0:
+            success_count += 1
+        if customer_result.get("success") and customer_result.get("rowcount", 0) > 0:
+            success_count += 1
+        for prod_result in products_results:
+            if prod_result.get("success") and prod_result.get("rowcount", 0) > 0:
+                success_count += 1
+                
+        if success_count > 0:
+            return {"success": True, "message": f"Sample data inserted successfully ({success_count} new records)", "results": results}
+        else:
+            return {"success": True, "message": "No new data inserted (may already exist)", "results": results}
+            
+    except Exception as e:
+        return {"success": False, "error": f"Error inserting sample data: {str(e)}", "results": results}
+
+def get_all_users() -> Dict[str, Any]:
+    """Get all users from the database for verification."""
+    query = "SELECT user_id, username, email, role, created_at FROM users"
+    return execute_sql_query(query)
+
+def get_all_products() -> Dict[str, Any]:
+    """Get all products from the database for verification."""
+    query = "SELECT product_id, name, description, price, stock_quantity, category FROM products"
+    return execute_sql_query(query)

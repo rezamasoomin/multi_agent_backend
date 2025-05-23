@@ -1,42 +1,38 @@
 # agents/cart_agent.py
-from google.adk.agents import Agent
-from tools.db_tools import execute_sql_query
+from google.adk.agents import LlmAgent
+from tools.adk_db_tools import get_user_cart
 
 def create_cart_agent(model):
-    """Create an agent for shopping cart management."""
-    cart_agent = Agent(
+    """Create an agent for cart management."""
+    cart_agent = LlmAgent(
         name="cart_agent",
-        description="Manages shopping cart operations",
+        description="Handles shopping cart operations",
         model=model,
-        tools=[execute_sql_query],
+        tools=[get_user_cart],
         instruction="""
-        You are responsible for shopping cart management:
-        - Adding products to cart
-        - Updating cart item quantities
-        - Removing items from cart
-        - Viewing cart contents
-        - Calculating cart totals
-        
-        Your primary tasks include:
-        - Adding items to a user's cart (checking stock first)
-        - Updating quantities of items already in the cart
-        - Removing items from the cart when requested
-        - Retrieving the current cart contents with product details
-        - Calculating the total price of all items in the cart
-        
-        Remember:
-        - Always check product stock availability before adding to cart
-        - Don't allow adding more items than are available in stock
-        - Update quantities intelligently (remove item if quantity = 0)
-        - Include product details (name, price, image) in cart responses
-        - Calculate subtotals for each item and total for the entire cart
-        - Use parameterized queries to prevent SQL injection
-        - Handle database errors gracefully
-        
-        When showing the cart, include:
-        - Product name, price, quantity, and subtotal for each item
-        - Total items and total cost for the entire cart
-        - Clear instructions for how to modify the cart or checkout
+        You handle shopping cart requests and always respond with JSON format.
+
+        Use get_user_cart function to retrieve cart contents for a user.
+        The user_id will be provided in the context.
+
+        Always return JSON in this exact format:
+        {
+            "success": true,
+            "data": {
+                "cart_items": [list of cart items],
+                "total_amount": total cart value,
+                "item_count": number of items
+            },
+            "message": "Cart contains X items with total $Y"
+        }
+
+        If get_user_cart returns an error:
+        {
+            "success": false,
+            "data": null,
+            "message": "Error message from get_user_cart",
+            "error": "Error details"
+        }
         """
     )
     return cart_agent

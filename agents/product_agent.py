@@ -1,42 +1,36 @@
 # agents/product_agent.py
 from google.adk.agents import LlmAgent
-from tools.db_tools import execute_sql_query
-from tools.auth_tools import is_admin
+from tools.adk_db_tools import search_products
 
 def create_product_agent(model):
     """Create an agent for product management."""
     product_agent = LlmAgent(
         name="product_agent",
-        description="Manages product operations including adding, updating, and deleting products",
-        model=model,  # Pass the model directly
-        tools=[execute_sql_query, is_admin],
-        # Use system_instruction instead of instructions
+        description="Handles product queries and searches",
+        model=model,
+        tools=[search_products],
         instruction="""
-        You are responsible for product management:
-        - Adding new products to the inventory
-        - Updating product details (name, price, stock, etc.)
-        - Deleting products
-        - Listing products with optional filtering
-        
-        Your primary tasks include:
-        - Creating new products with complete details
-        - Updating product information when changes are needed
-        - Deleting products when they're no longer available
-        - Retrieving product listings, possibly filtered by category, price, etc.
-        - Checking product availability before allowing purchases
-        
-        Remember:
-        - Only admin users can add, update, or delete products
-        - Validate product data (e.g., prices must be positive)
-        - Properly format product details in your responses
-        - Use parameterized queries to prevent SQL injection
-        - Handle database errors gracefully
-        
-        For listing products, you can filter by:
-        - Category
-        - Price range
-        - Availability (in stock)
-        - Name (partial search)
+        You handle product-related requests and always respond with JSON format.
+
+        CRITICAL RULE: You must ONLY return data from the actual search_products function results. NEVER invent or hallucinate product data.
+
+        PROCESS:
+        1. Call search_products() with the appropriate search term
+        2. Take the EXACT result from the function
+        3. Return that exact data without any modifications
+
+        Use the search_products function to find products. Examples:
+        - For "show products" or "list products": call search_products("")
+        - For "t-shirt" or "shirt": call search_products("shirt")
+        - For specific searches: call search_products("search term")
+
+        Always return the EXACT JSON structure from search_products:
+        - If search_products returns success=true, return that exact result
+        - If search_products returns success=false, return that exact result
+        - Do not modify product names, prices, or any other data
+        - Do not add products that weren't in the search results
+
+        NEVER CREATE FAKE PRODUCTS OR PRICES.
         """
     )
     return product_agent

@@ -2,8 +2,8 @@ import os
 import uuid
 import google.generativeai as genai
 import uvicorn
-from fastapi import Depends # Removed HTTPException as it's handled in api.app or not used directly here
-from pydantic import BaseModel # Not strictly needed here if models are imported with routers
+from fastapi import Depends
+from pydantic import BaseModel
 from typing import Dict, Any, Optional, List, Generator
 
 # Import ADK components
@@ -21,17 +21,12 @@ from agents.order_agent import create_order_agent
 from agents.auth_agent import create_auth_agent
 from agents.main_agent import create_main_agent
 
-# 1. Import the main 'app' instance and shared dependencies (like auth)
-from api.app import app, get_current_user, verify_admin
+# Import the main 'app' instance
+from api.app import app
 
-# 2. Import the routers and their Pydantic models
-from api.admin_routes import admin_router, ProductRequest, ProductUpdateRequest, OrderStatusUpdateRequest
-# Removed: MessageRequest as AdminMessageRequest (unless used)
-from api.customer_routes import customer_router, CartItemRequest
-# Removed: MessageRequest as CustomerMessageRequest (unless used)
+# Import the routers
 from api.auth_routes import auth_router, set_auth_dependencies
-
-
+from api.chat_routes import chat_router, set_chat_dependencies
 
 # Initialize Google Gemini
 genai.configure(api_key=GOOGLE_API_KEY)
@@ -40,6 +35,7 @@ model = 'gemini-2.0-flash'
 # Initialize database session service
 session_service = DatabaseSessionService(db_url=DATABASE_URL)
 
+# Initialize database and sample data
 from tools.db_tools import create_database_schema, insert_sample_data
 print("Creating database schema...")
 schema_result = create_database_schema()
@@ -48,6 +44,7 @@ print(f"Schema creation result: {schema_result}")
 print("Inserting sample data...")
 sample_data_result = insert_sample_data()
 print(f"Sample data insertion result: {sample_data_result}")
+
 # Initialize agents
 schema_agent = create_schema_agent(model)
 user_agent = create_user_agent(model)
@@ -65,10 +62,22 @@ cart_runner = Runner(agent=cart_agent, app_name='cart', session_service=session_
 order_runner = Runner(agent=order_agent, app_name='order', session_service=session_service)
 auth_runner = Runner(agent=auth_agent, app_name='auth', session_service=session_service)
 main_runner = Runner(agent=main_agent, app_name='main', session_service=session_service)
+
+# Set dependencies for auth routes
 set_auth_dependencies(auth_runner, session_service)
 
+# Set dependencies for chat routes
+set_chat_dependencies(
+    main_runner, 
+    auth_runner, 
+    product_runner, 
+    cart_runner, 
+    order_runner, 
+    user_runner, 
+    session_service
+)
 
-# Helper to process runner generator
+# Helper to process runner generator (kept for backward compatibility if needed)
 def process_run_response(response_generator: Generator[Event, None, None]) -> List[Dict]:
     events = []
     for event in response_generator:
@@ -88,126 +97,74 @@ def process_run_response(response_generator: Generator[Event, None, None]) -> Li
 @app.on_event("startup")
 async def initialize_database():
     session_id_for_init = str(uuid.uuid4())
+    
+    # Initialize schema
     schema_message_text = "Initialize the database schema for our e-commerce application"
     print(f"Initializing schema with user_id: {SYSTEM_USER_ID}, session_id: {session_id_for_init}")
     try:
-        # If your session_service.get_session in Runner.run_async doesn't auto-create,
-        # you might need to explicitly create it first:
-        # await session_service.create_session(app_name='schema', user_id=SYSTEM_USER_ID, session_id=session_id_for_init)
         schema_response_gen = schema_runner.run(
             user_id=SYSTEM_USER_ID,
             session_id=session_id_for_init,
             new_message=schema_message_text
         )
         print("Schema creation response (generator object):", schema_response_gen)
-        # list(schema_response_gen) # Consume generator if needed for side effects
     except Exception as e:
-        print(f"Error during schema initialization: {e}") # Consider logging properly
-        # raise # Or handle gracefully
+        print(f"Error during schema initialization: {e}")
 
+    # Insert sample data
     sample_data_text = "Insert sample data for testing our e-commerce application"
     print(f"Inserting sample data with user_id: {SYSTEM_USER_ID}, session_id: {session_id_for_init}")
     try:
-        # await session_service.create_session(app_name='schema', user_id=SYSTEM_USER_ID, session_id=session_id_for_init) # If needed
         data_response_gen = schema_runner.run(
             user_id=SYSTEM_USER_ID,
             session_id=session_id_for_init,
             new_message=sample_data_text
         )
         print("Sample data insertion response (generator object):", data_response_gen)
-        # list(data_response_gen) # Consume generator
     except Exception as e:
-        print(f"Error during sample data insertion: {e}") # Consider logging
-        # raise
+        print(f"Error during sample data insertion: {e}")
 
-# --- Define Admin Routes on admin_router ---
-@admin_router.post("/products", response_model=List[Dict], tags=["Admin Products"])
-async def add_product(
-    product: ProductRequest,
-    user: Dict[str, Any] = Depends(verify_admin)
-):
-    """Add a new product (admin only)"""
-    product_text_message = f"""
-    Add a new product with the following details:
-    - Name: {product.name}
-    - Price: {product.price}
-    - Stock Quantity: {product.stock_quantity}
-    - Description: {product.description or "N/A"}
-    - Category: {product.category or "N/A"}
-    - Image URL: {product.image_url or "N/A"}
-    """
-    request_session_id = str(uuid.uuid4())
-    # await session_service.create_session(app_name='product', user_id=str(user["user_id"]), session_id=request_session_id) # If needed
-    response_gen = product_runner.run(
-        user_id=str(user["user_id"]),
-        session_id=request_session_id,
-        new_message=product_text_message
-    )
-    return process_run_response(response_gen)
+# Register routers with the main app
+app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(chat_router, prefix="/api", tags=["Chat"])
 
-@admin_router.put("/products/{product_id_path}", response_model=List[Dict], tags=["Admin Products"])
-async def update_product(
-    product_id_path: int, # Renamed to avoid clash with ProductUpdateRequest if it had product_id
-    product: ProductUpdateRequest,
-    user: Dict[str, Any] = Depends(verify_admin)
-):
-    """Update a product (admin only)"""
-    update_fields = []
-    if product.name is not None: update_fields.append(f"- Name: {product.name}")
-    if product.price is not None: update_fields.append(f"- Price: {product.price}")
-    if product.stock_quantity is not None: update_fields.append(f"- Stock Quantity: {product.stock_quantity}")
-    if product.description is not None: update_fields.append(f"- Description: {product.description}")
-    if product.category is not None: update_fields.append(f"- Category: {product.category}")
-    if product.image_url is not None: update_fields.append(f"- Image URL: {product.image_url}")
-    
-    update_text_parts = "\n".join(update_fields)
-    message_payload = f"Update product with ID {product_id_path} with the following changes:\n{update_text_parts}"
-    request_session_id = str(uuid.uuid4())
-    # await session_service.create_session(app_name='product', user_id=str(user["user_id"]), session_id=request_session_id) # If needed
-    response_gen = product_runner.run(
-        user_id=str(user["user_id"]),
-        session_id=request_session_id,
-        new_message=message_payload
-    )
-    return process_run_response(response_gen)
+# Add a root endpoint for API info
+@app.get("/", tags=["Root"])
+async def root():
+    """Root endpoint with API information."""
+    return {
+        "message": "Multi-Agent E-commerce Chat API",
+        "version": "1.0.0",
+        "endpoints": {
+            "authentication": "/api/auth/",
+            "chat": "/api/chat",
+            "documentation": "/docs",
+            "health": "/api/chat/health"
+        },
+        "usage": {
+            "login": "POST /api/auth/token with username and password",
+            "register": "POST /api/auth/register with user details",
+            "chat": "POST /api/chat with Authorization header and message",
+            "example_message": "I want to see all black T-shirts"
+        }
+    }
 
-# --- Define Customer Routes on customer_router ---
-@customer_router.get("/products", response_model=List[Dict], tags=["Customer Products"])
-async def list_products(
-    category: Optional[str] = None,
-    #user: Dict[str, Any] = Depends(get_current_user)
-):
-    """List all products, optionally filtered by category"""
-    message_text = f"Show me all products in the {category} category" if category else "Show me all available products"
-    request_session_id = str(uuid.uuid4())
-    # await session_service.create_session(app_name='product', user_id=str(user["user_id"]), session_id=request_session_id) # If needed
-    response_gen = product_runner.run(
-       user_id=str(user["user_id"]),
-       session_id=request_session_id,
-       new_message=message_text
-    )
-    return process_run_response(response_gen)
-
-@customer_router.get("/cart", response_model=List[Dict], tags=["Customer Cart"])
-async def view_cart(
-    user: Dict[str, Any] = Depends(get_current_user)
-):
-    """View the current user's shopping cart"""
-    message_text = "Show me my current shopping cart"
-    request_session_id = str(uuid.uuid4())
-    # await session_service.create_session(app_name='cart', user_id=str(user["user_id"]), session_id=request_session_id) # If needed
-    response_gen = cart_runner.run(
-        user_id=str(user["user_id"]),
-        session_id=request_session_id,
-        new_message=message_text
-    )
-    return process_run_response(response_gen)
-
-# --- MOVED TO THE END: REGISTER ROUTERS WITH THE MAIN APP ---
-# This must happen AFTER all routes are defined on admin_router and customer_router.
-app.include_router(admin_router, prefix="/api/admin") # Tags are now defined on routes themselves
-app.include_router(customer_router, prefix="/api/customer") # Tags are now defined on routes themselves
-app.include_router(auth_router, prefix="/api/auth") # Tags are now defined on routes themselves
+# Add a simple health check
+@app.get("/health", tags=["System"])
+async def health_check():
+    """System health check."""
+    return {
+        "status": "healthy",
+        "database": "connected" if session_service else "disconnected",
+        "agents": {
+            "main": main_runner is not None,
+            "product": product_runner is not None,
+            "cart": cart_runner is not None,
+            "order": order_runner is not None,
+            "user": user_runner is not None,
+            "auth": auth_runner is not None
+        }
+    }
 
 # Run the application
 if __name__ == "__main__":
