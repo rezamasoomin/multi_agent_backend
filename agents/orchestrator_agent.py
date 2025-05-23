@@ -42,17 +42,12 @@ def create_orchestrator_agent(model):
         FOR ORDER REQUESTS:
         - "show my orders" → Extract user_id from message, then CALL get_user_orders("user_id")
 
-        Response format:
-        - Always return the exact result from the function call
-        - Do not modify the response or add any extra information
-        - Do not return JSON without calling the functions first
-        - Do not return any other information or context
-        
         IMPORTANT RULES:
         1. Always CALL the functions - never just describe what you would do
         2. Return exactly what the function returns - no modifications
         3. Extract user_id from "User ID: X" at the start of messages
         4. The user request is after "Request: "
+        5. Return the function result directly - do not modify or summarize it
 
         Example flow:
         User: "give me list of t-shirts"

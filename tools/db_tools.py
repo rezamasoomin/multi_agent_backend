@@ -177,6 +177,31 @@ def insert_sample_data() -> Dict[str, Any]:
                 "category": "Electronics",
                 "image_url": "https://example.com/smartphone.jpg"
             },
+             {
+                "name": "Iphone 15",
+                "description": "Latest smartphone with amazing features",
+                "price": 800.00,
+                "stock_quantity": 1,
+                "category": "Electronics",
+                "image_url": "https://example.com/smartphone.jpg"
+            },
+            
+             {
+                "name": "Iphone X",
+                "description": "Latest smartphone with amazing features",
+                "price": 250.00,
+                "stock_quantity": 2,
+                "category": "Electronics",
+                "image_url": "https://example.com/smartphone.jpg"
+            },
+             {
+                "name": "Samsung Galaxy S21",
+                "description": "Latest smartphone with amazing features",
+                "price": 129.99,
+                "stock_quantity": 10,
+                "category": "Electronics",
+                "image_url": "https://example.com/smartphone.jpg"
+            },
             {
                 "name": "Laptop Pro",
                 "description": "Powerful laptop for professionals",

@@ -66,7 +66,6 @@ def search_products(search_term: str) -> Dict[str, Any]:
                 "message": f"Found {len(products)} products" + (f" matching '{search_term}'" if search_term.strip() else "")
             }
             
-            print(f"DEBUG: search_products returning: {response}")
             return response
             
     except SQLAlchemyError as e:
