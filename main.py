@@ -19,7 +19,7 @@ from agents.product_agent import create_product_agent
 from agents.cart_agent import create_cart_agent
 from agents.order_agent import create_order_agent
 from agents.auth_agent import create_auth_agent
-from agents.main_agent import create_main_agent
+from agents.orchestrator_agent import create_orchestrator_agent
 
 # Import the main 'app' instance
 from api.app import app
@@ -29,7 +29,7 @@ from api.auth_routes import auth_router, set_auth_dependencies
 from api.chat_routes import chat_router, set_chat_dependencies
 
 # Initialize Google Gemini
-genai.configure(api_key=GOOGLE_API_KEY)
+genai.configure(api_key=GOOGLE_API_KEY) 
 model = 'gemini-2.0-flash'
 
 # Initialize database session service
@@ -47,35 +47,21 @@ print(f"Sample data insertion result: {sample_data_result}")
 
 # Initialize agents
 schema_agent = create_schema_agent(model)
-user_agent = create_user_agent(model)
-product_agent = create_product_agent(model)
-cart_agent = create_cart_agent(model)
-order_agent = create_order_agent(model)
 auth_agent = create_auth_agent(model)
-main_agent = create_main_agent(model)
+
+# Create orchestrator that handles all e-commerce operations
+orchestrator_agent = create_orchestrator_agent(model)
 
 # Initialize runners
 schema_runner = Runner(agent=schema_agent, app_name='schema', session_service=session_service)
-user_runner = Runner(agent=user_agent, app_name='user', session_service=session_service)
-product_runner = Runner(agent=product_agent, app_name='product', session_service=session_service)
-cart_runner = Runner(agent=cart_agent, app_name='cart', session_service=session_service)
-order_runner = Runner(agent=order_agent, app_name='order', session_service=session_service)
+orchestrator_runner = Runner(agent=orchestrator_agent, app_name='orchestrator', session_service=session_service)
 auth_runner = Runner(agent=auth_agent, app_name='auth', session_service=session_service)
-main_runner = Runner(agent=main_agent, app_name='main', session_service=session_service)
 
 # Set dependencies for auth routes
 set_auth_dependencies(auth_runner, session_service)
 
 # Set dependencies for chat routes
-set_chat_dependencies(
-    main_runner, 
-    auth_runner, 
-    product_runner, 
-    cart_runner, 
-    order_runner, 
-    user_runner, 
-    session_service
-)
+set_chat_dependencies(orchestrator_runner, session_service)
 
 # Helper to process runner generator (kept for backward compatibility if needed)
 def process_run_response(response_generator: Generator[Event, None, None]) -> List[Dict]:
@@ -157,12 +143,9 @@ async def health_check():
         "status": "healthy",
         "database": "connected" if session_service else "disconnected",
         "agents": {
-            "main": main_runner is not None,
-            "product": product_runner is not None,
-            "cart": cart_runner is not None,
-            "order": order_runner is not None,
-            "user": user_runner is not None,
-            "auth": auth_runner is not None
+            "orchestrator": orchestrator_runner is not None,
+            "auth": auth_runner is not None,
+            "schema": schema_runner is not None
         }
     }
 

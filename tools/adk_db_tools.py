@@ -5,21 +5,38 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.exc import SQLAlchemyError
 from config.settings import DATABASE_URL
 
-def search_products(search_term: str = "") -> Dict[str, Any]:
+def search_products(search_term: str) -> Dict[str, Any]:
     """Search for products in the database.
     
     Args:
-        search_term: Term to search for in product names and descriptions
+        search_term: Term to search for in product names and descriptions. Use empty string for all products.
         
     Returns:
-        Dictionary with search results
+        Dictionary with search results in json format
+        example:
+        {
+            "success": true,
+            "data": [
+                {
+                    "product_id": 1,
+                    "name": "Product A",
+                    "description": "Description of Product A",
+                    "price": 19.99,
+                    "stock_quantity": 10,
+                    "category": "Category A",
+                    "image_url": "http://example.com/image_a.jpg"
+                },
+                ...
+            ],
+            "message": "Found X products matching 'search_term'"
+        }
     """
     print(f"DEBUG: search_products called with search_term='{search_term}'")
     
     engine = create_engine(DATABASE_URL)
     try:
         with engine.connect() as connection:
-            if search_term:
+            if search_term.strip():
                 query = text("""
                     SELECT product_id, name, description, price, stock_quantity, category, image_url
                     FROM products 
@@ -27,7 +44,6 @@ def search_products(search_term: str = "") -> Dict[str, Any]:
                     AND stock_quantity > 0
                     ORDER BY name
                 """)
-                print('************1**************', query)
                 result = connection.execute(query, {"search_term": f"%{search_term}%"})
             else:
                 query = text("""
@@ -37,10 +53,8 @@ def search_products(search_term: str = "") -> Dict[str, Any]:
                     ORDER BY name
                     LIMIT 10
                 """)
-                print('************2**************', query)
                 result = connection.execute(query)
             
-            print('************3**************', result)
             columns = result.keys()
             products = []
             for row in result:
@@ -49,7 +63,7 @@ def search_products(search_term: str = "") -> Dict[str, Any]:
             response = {
                 "success": True,
                 "data": products,
-                "message": f"Found {len(products)} products" + (f" matching '{search_term}'" if search_term else "")
+                "message": f"Found {len(products)} products" + (f" matching '{search_term}'" if search_term.strip() else "")
             }
             
             print(f"DEBUG: search_products returning: {response}")
